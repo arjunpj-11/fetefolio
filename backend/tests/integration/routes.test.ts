@@ -28,6 +28,14 @@ describe('HTTP route integration', () => {
     });
   });
 
+  it('normalizes the configured browser origin for CORS', async () => {
+    const response = await request(server)
+      .get('/api/health')
+      .set('Origin', 'http://localhost:5173')
+      .expect(200);
+    expect(response.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+  });
+
   it('validates auth registration before persistence', async () => {
     const response = await request(server)
       .post('/api/auth/register')

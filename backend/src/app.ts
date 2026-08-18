@@ -17,9 +17,10 @@ import { ApiResponse } from './shared/utils/ApiResponse.js';
 
 export const createApp = (): express.Express => {
   const app = express();
+  const clientOrigin = new URL(env.CLIENT_URL).origin;
   app.disable('x-powered-by');
   app.use(helmet({ contentSecurityPolicy: false }));
-  app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+  app.use(cors({ origin: clientOrigin, credentials: true }));
   app.use(express.json({ limit: '100kb' }));
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
   app.use(mongoSanitize({ replaceWith: '_' }));
