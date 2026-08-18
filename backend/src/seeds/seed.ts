@@ -150,7 +150,7 @@ const run = async (): Promise<void> => {
       rating: 4.6,
       location: { city: 'Delhi', state: 'Delhi', address: '7 Hauz Khas Village' },
       images: [
-        'https://images.unsplash.com/photo-1571266028243-d220c9c3b2d2?auto=format&fit=crop&w=1400&q=80',
+        'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1400&q=80',
         'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1400&q=80',
       ],
       contactDetails: { phone: '+91 98765 43212', email: 'sound@programme.test' },
