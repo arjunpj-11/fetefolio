@@ -1,0 +1,517 @@
+openapi: 3.0.3
+info:
+  title: Fetefolio API
+  version: 1.1.0
+  description: Event-service discovery with provider-reviewed booking requests and provider-managed pooled availability.
+servers:
+  - url: http://localhost:5055/api
+tags:
+  - name: Health
+  - name: Auth
+  - name: Services
+  - name: Service Types
+  - name: Availability
+  - name: Bookings
+  - name: Admin
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Check API readiness
+      responses:
+        '200': { description: API is ready }
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Request a registration verification code
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Register' } } }
+      responses:
+        '202': { description: Pending registration stored and OTP sent }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { description: Email already exists }
+  /auth/verify-registration:
+    post:
+      tags: [Auth]
+      summary: Verify the OTP and create the customer account
+      requestBody:
+        required: true
+        content:
+          { application/json: { schema: { $ref: '#/components/schemas/VerifyRegistration' } } }
+      responses:
+        '201': { description: Account created and JWT returned }
+        '400': { description: Invalid or expired verification code }
+        '409': { description: Email already exists }
+  /auth/resend-registration-otp:
+    post:
+      tags: [Auth]
+      summary: Resend a registration verification code
+      requestBody:
+        required: true
+        content:
+          { application/json: { schema: { $ref: '#/components/schemas/ResendRegistrationOtp' } } }
+      responses:
+        '200': { description: New verification code sent }
+        '400': { description: Registration expired }
+        '429': { description: Resend cooldown active }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in as a customer or provider
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Login' } } }
+      responses:
+        '200': { description: User profile and JWT }
+        '401': { description: Invalid credentials }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Load the authenticated profile
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Current user profile }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /services:
+    get:
+      tags: [Services]
+      summary: Search and filter active services
+      description: Date filters exclude services whose provider-managed blocked ranges overlap the requested inclusive interval.
+      parameters:
+        - { in: query, name: category, schema: { $ref: '#/components/schemas/Category' } }
+        - { in: query, name: city, schema: { type: string, maxLength: 80 } }
+        - { in: query, name: minPrice, schema: { type: number, minimum: 0 } }
+        - { in: query, name: maxPrice, schema: { type: number, minimum: 0 } }
+        - {
+            in: query,
+            name: date,
+            description: Single-date compatibility filter,
+            schema: { type: string, format: date },
+          }
+        - { in: query, name: startDate, schema: { type: string, format: date } }
+        - { in: query, name: endDate, schema: { type: string, format: date } }
+        - { in: query, name: minRating, schema: { type: number, minimum: 1, maximum: 5 } }
+        - {
+            in: query,
+            name: search,
+            description: Full-text title and description search,
+            schema: { type: string, maxLength: 100 },
+          }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/ServiceLimit' }
+        - {
+            in: query,
+            name: sort,
+            schema:
+              {
+                type: string,
+                enum: [newest, priceAsc, priceDesc, titleAsc, ratingDesc],
+                default: newest,
+              },
+          }
+      responses:
+        '200': { description: Paginated matching services }
+        '400': { $ref: '#/components/responses/ValidationError' }
+    post:
+      tags: [Services]
+      summary: Create a provider-owned service
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ServiceCreate' } } }
+      responses:
+        '201': { description: Service created }
+        '403': { $ref: '#/components/responses/AdminRequired' }
+        '409': { description: Service title already exists }
+  /services/types:
+    get:
+      tags: [Service Types]
+      summary: List service types
+      parameters:
+        - { in: query, name: availableOnly, schema: { type: boolean, default: false } }
+        - { in: query, name: startDate, schema: { type: string, format: date } }
+        - { in: query, name: endDate, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Service types with service counts }
+    post:
+      tags: [Service Types]
+      summary: Create a service type
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          { application/json: { schema: { $ref: '#/components/schemas/ServiceTypeCreate' } } }
+      responses:
+        '201': { description: Service type created }
+        '403': { $ref: '#/components/responses/AdminRequired' }
+        '409': { description: Service type already exists }
+  /services/types/{id}:
+    parameters: [{ $ref: '#/components/parameters/ServiceTypeId' }]
+    put:
+      tags: [Service Types]
+      summary: Rename a service type or change its icon
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          { application/json: { schema: { $ref: '#/components/schemas/ServiceTypeUpdate' } } }
+      responses:
+        '200': { description: Service type updated }
+        '404': { description: Service type not found }
+        '409': { description: Name already exists }
+    delete:
+      tags: [Service Types]
+      summary: Delete a service type
+      description: Cascade deletion must be explicit and is refused while affected services have upcoming pending or confirmed bookings.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: cascade, schema: { type: boolean, default: false } }
+      responses:
+        '200': { description: Service type deleted }
+        '409': { description: Cascade confirmation required or active bookings exist }
+  /services/uploads/cloudinary-signature:
+    get:
+      tags: [Services]
+      summary: Create a signed Cloudinary upload payload
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Short-lived signed upload fields }
+        '503': { description: Cloudinary is not configured }
+  /services/meta/filters:
+    get:
+      tags: [Services]
+      summary: Load category-scoped filter metadata
+      parameters:
+        - {
+            in: query,
+            name: category,
+            required: true,
+            schema: { $ref: '#/components/schemas/Category' },
+          }
+      responses:
+        '200': { description: Available cities for the category }
+  /services/{id}/availability:
+    get:
+      tags: [Availability]
+      summary: List blocked ranges for the customer calendar
+      parameters:
+        - { $ref: '#/components/parameters/ServiceId' }
+        - { in: query, name: from, required: true, schema: { type: string, format: date } }
+        - { in: query, name: to, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Overlapping provider-managed blocked ranges }
+        '404': { description: Service not found }
+  /services/{id}/blocked-dates:
+    post:
+      tags: [Availability]
+      summary: Close an owned service for an inclusive date range
+      description: Used for exhausted pooled inventory, offline bookings, maintenance, or other provider decisions.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/ServiceId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/DateRange' } } }
+      responses:
+        '201': { description: Dates blocked }
+        '403': { description: Provider does not own the service }
+        '409': { description: Range overlaps an existing block }
+  /services/{id}/blocked-dates/{blockId}:
+    delete:
+      tags: [Availability]
+      summary: Reopen a blocked date range
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/ServiceId' }
+        - { $ref: '#/components/parameters/BlockId' }
+      responses:
+        '200': { description: Block removed }
+        '403': { description: Provider does not own the service }
+        '404': { description: Block not found }
+  /services/{id}:
+    parameters: [{ $ref: '#/components/parameters/ServiceId' }]
+    get:
+      tags: [Services]
+      summary: Load service details
+      responses:
+        '200': { description: Service details }
+        '404': { description: Service not found }
+    put:
+      tags: [Services]
+      summary: Update an owned service
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ServiceUpdate' } } }
+      responses:
+        '200': { description: Service updated }
+        '403': { description: Provider does not own the service }
+        '409': { description: Service title already exists }
+    delete:
+      tags: [Services]
+      summary: Delete an owned service
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Service deleted }
+        '403': { description: Provider does not own the service }
+        '409': { description: Upcoming pending or confirmed booking exists }
+  /bookings:
+    post:
+      tags: [Bookings]
+      summary: Submit a customer booking request
+      description: The server rejects blocked dates and calculates the inclusive total from the stored daily price. New requests start as pending.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/BookingCreate' } } }
+      responses:
+        '201': { description: Pending booking request created }
+        '403': { description: Customer role required }
+        '409': { description: Requested dates are blocked }
+  /bookings/my:
+    get:
+      tags: [Bookings]
+      summary: List the current customer's bookings
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/BookingLimit' }
+        - { $ref: '#/components/parameters/BookingSort' }
+      responses:
+        '200': { description: Paginated customer bookings }
+  /bookings/service/{id}:
+    get:
+      tags: [Bookings]
+      summary: List bookings for an owned service
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/ServiceId' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/BookingLimit' }
+        - { $ref: '#/components/parameters/BookingSort' }
+      responses:
+        '200': { description: Paginated service bookings }
+        '403': { description: Provider does not own the service }
+  /admin/services:
+    get:
+      tags: [Admin]
+      summary: List all services owned by the current provider
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Provider services }
+        '403': { $ref: '#/components/responses/AdminRequired' }
+  /admin/bookings:
+    get:
+      tags: [Admin]
+      summary: List bookings across the current provider's services
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/BookingLimit' }
+        - { $ref: '#/components/parameters/BookingSort' }
+      responses:
+        '200': { description: Paginated provider bookings }
+        '403': { $ref: '#/components/responses/AdminRequired' }
+  /admin/bookings/{id}/confirm:
+    patch:
+      tags: [Admin]
+      summary: Confirm a pending booking request
+      description: The provider may keep pooled availability open or block all/part of the requested range after confirmation.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/BookingId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/BookingConfirm' } } }
+      responses:
+        '200': { description: Booking confirmed }
+        '403': { description: Provider does not own the service }
+        '409': { description: Booking is not pending or the new block overlaps an existing block }
+  /admin/bookings/{id}/reject:
+    patch:
+      tags: [Admin]
+      summary: Reject a pending booking request
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/BookingId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Reason' } } }
+      responses:
+        '200': { description: Booking rejected and customer notified }
+        '409': { description: Booking is not pending }
+  /admin/bookings/{id}/cancel:
+    patch:
+      tags: [Admin]
+      summary: Cancel a confirmed booking
+      description: The customer is notified. Provider-managed date blocks are not reopened automatically.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/BookingId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Reason' } } }
+      responses:
+        '200': { description: Booking cancelled and customer notified }
+        '409': { description: Booking is not confirmed }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    Page: { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+    ServiceLimit:
+      { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 50, default: 12 } }
+    BookingLimit:
+      { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+    BookingSort:
+      {
+        in: query,
+        name: sort,
+        schema: { type: string, enum: [newest, oldest, startAsc], default: newest },
+      }
+    ServiceId:
+      { in: path, name: id, required: true, schema: { $ref: '#/components/schemas/ObjectId' } }
+    ServiceTypeId:
+      { in: path, name: id, required: true, schema: { $ref: '#/components/schemas/ObjectId' } }
+    BookingId:
+      { in: path, name: id, required: true, schema: { $ref: '#/components/schemas/ObjectId' } }
+    BlockId:
+      { in: path, name: blockId, required: true, schema: { $ref: '#/components/schemas/ObjectId' } }
+  responses:
+    ValidationError: { description: Zod validation failure }
+    Unauthorized: { description: Missing, invalid, or expired bearer token }
+    AdminRequired: { description: Provider/admin role required }
+  schemas:
+    ObjectId: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+    Category: { type: string, pattern: '^[a-z][a-z0-9-]{1,49}$', example: venue }
+    Register:
+      type: object
+      required: [name, email, password]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        email: { type: string, format: email }
+        password:
+          {
+            type: string,
+            minLength: 8,
+            maxLength: 72,
+            description: Must contain an uppercase letter and a number,
+          }
+    Login:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, maxLength: 72 }
+    VerifyRegistration:
+      type: object
+      required: [email, otp]
+      properties:
+        email: { type: string, format: email }
+        otp: { type: string, pattern: '^\d{6}$' }
+    ResendRegistrationOtp:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+    Location:
+      type: object
+      required: [city, state, address]
+      properties:
+        city: { type: string, minLength: 2, maxLength: 80 }
+        state: { type: string, minLength: 2, maxLength: 80 }
+        address: { type: string, minLength: 5, maxLength: 240 }
+    ContactDetails:
+      type: object
+      required: [phone, email]
+      properties:
+        phone: { type: string, minLength: 7, maxLength: 20 }
+        email: { type: string, format: email }
+    BookingContactDetails:
+      type: object
+      required: [name, phone, email]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        phone: { type: string, minLength: 7, maxLength: 20 }
+        email: { type: string, format: email }
+        note: { type: string, maxLength: 500 }
+    ServiceProperties:
+      type: object
+      properties:
+        title: { type: string, minLength: 3, maxLength: 120 }
+        category: { $ref: '#/components/schemas/Category' }
+        description: { type: string, minLength: 20, maxLength: 3000 }
+        pricePerDay: { type: number, minimum: 1, maximum: 10000000 }
+        location: { $ref: '#/components/schemas/Location' }
+        images: { type: array, maxItems: 8, items: { type: string, format: uri } }
+        contactDetails: { $ref: '#/components/schemas/ContactDetails' }
+        adminContactPhone:
+          type: string
+          minLength: 7
+          maxLength: 20
+          description: Admin-only provider or dealer phone used to verify booking requests; omitted from customer-facing responses.
+        rating: { type: number, minimum: 1, maximum: 5, default: 4.5 }
+        capacity: { type: number, minimum: 1 }
+        isActive: { type: boolean, default: true }
+    ServiceCreate:
+      allOf:
+        - { $ref: '#/components/schemas/ServiceProperties' }
+        - type: object
+          required:
+            [title, category, description, pricePerDay, location, contactDetails, adminContactPhone]
+    ServiceUpdate:
+      allOf:
+        - { $ref: '#/components/schemas/ServiceProperties' }
+        - type: object
+          minProperties: 1
+    ServiceTypeCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 60 }
+    ServiceTypeUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 2, maxLength: 60 }
+        icon:
+          {
+            type: string,
+            enum:
+              [
+                sparkles,
+                venue,
+                stay,
+                catering,
+                photography,
+                music,
+                decor,
+                flowers,
+                cake,
+                transport,
+                tent,
+                entertainment,
+                lighting,
+                beauty,
+              ],
+          }
+    DateRange:
+      type: object
+      required: [startDate, endDate]
+      properties:
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+    BookingCreate:
+      type: object
+      required: [serviceId, startDate, endDate, contactDetails]
+      properties:
+        serviceId: { $ref: '#/components/schemas/ObjectId' }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        contactDetails: { $ref: '#/components/schemas/BookingContactDetails' }
+    BookingConfirm:
+      type: object
+      properties:
+        blockDates: { $ref: '#/components/schemas/DateRange' }
+    Reason:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 500 }

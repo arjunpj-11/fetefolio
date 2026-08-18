@@ -1,0 +1,9 @@
+process.env.NODE_ENV = 'test';
+process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters';
+process.env.OTP_SECRET = 'test-otp-secret-at-least-32-characters';
+process.env.MONGODB_URI = 'mongodb://127.0.0.1:27017/fetefolio_test';
+process.env.REDIS_URL = 'redis://127.0.0.1:6379/15';
+process.env.CLIENT_URL = 'http://localhost:5173';
+process.env.SMTP_HOST = '';
+process.env.SMTP_USER = '';
+process.env.SMTP_PASS = '';

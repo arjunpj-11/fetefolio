@@ -1,0 +1,28 @@
+{
+  "name": "the-programme-event-booking",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n API,WEB -c yellow,cyan \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w @programme/contracts && npm run build -w backend && npm run build -w frontend",
+    "start": "npm run start -w backend",
+    "test": "npm run build -w @programme/contracts && npm test -w backend && npm test -w frontend",
+    "typecheck": "npm run build -w @programme/contracts && npm run typecheck -w backend && npm run typecheck -w frontend",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run typecheck && npm test && npm run build",
+    "seed": "npm run seed -w backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "prettier": "3.6.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
