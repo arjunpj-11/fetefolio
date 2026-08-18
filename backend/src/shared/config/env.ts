@@ -21,6 +21,7 @@ const envSchema = z
     SMTP_PORT: z.coerce.number().int().positive().default(587),
     SMTP_USER: z.string().optional(),
     SMTP_PASS: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
     MAIL_FROM: z.string().default('bookings@fetefolio.local'),
     CLOUDINARY_CLOUD_NAME: z.string().optional(),
     CLOUDINARY_API_KEY: z.string().optional(),

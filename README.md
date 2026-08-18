@@ -53,7 +53,7 @@ Submit the source through a Git repository or a clean ZIP. Include `package.json
 
 ## Environment variables
 
-Backend variables are documented in `backend/.env.example`. Use separate random values of at least 32 characters for `JWT_SECRET` and `OTP_SECRET` in production. Redis is required for pending registrations. SMTP variables are optional only for local development; without them, the one-time code is printed to the API console instead of delivered. Frontend uses `VITE_API_URL` from `frontend/.env.example`.
+Backend variables are documented in `backend/.env.example`. Use separate random values of at least 32 characters for `JWT_SECRET` and `OTP_SECRET` in production. Redis is required for pending registrations. For Render Free, set `RESEND_API_KEY` and a verified `MAIL_FROM` sender because Render blocks outbound SMTP ports. SMTP remains available for local development and paid hosts. Without an email provider, local development prints a mail preview and production returns a clear service-unavailable response. Frontend uses `VITE_API_URL` from `frontend/.env.example`.
 
 Admin image uploads use signed direct uploads to Cloudinary. Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `backend/.env`; the secret remains server-side and is never returned to the browser.
 
